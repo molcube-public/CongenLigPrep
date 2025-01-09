@@ -241,7 +241,7 @@ def write_zmat(xyzarr, distmat, atomnames, rvar=False, avar=False, dvar=False):
         for i in range(npart-3):
             print('D{:<4d} = {:>11.5f}'.format(i+1, dlist[i]))
 
-def generate_zmatrix_file(atom_info, rvar=False, avar=False, dvar=False):
+def generate_zmatrix_file(atom_info, rvar=False, avar=False, dvar=False, zmat_gen_method=1):
     """
     Generate Z-matrix from atom elements and coordinates and write to a temporary file.
     
@@ -250,6 +250,7 @@ def generate_zmatrix_file(atom_info, rvar=False, avar=False, dvar=False):
             - 'elements': list of atom elements
             - 'coordinates': numpy array of XYZ coordinates
         rvar, avar, dvar: booleans to control variable naming in Z-matrix
+        zmat_gen_method: int, method to generate z-matrix (1: use our own zmat generation, 2: use geomConvert's method)
             
     Returns:
         str: Path to temporary file containing the Z-matrix
@@ -274,8 +275,13 @@ def generate_zmatrix_file(atom_info, rvar=False, avar=False, dvar=False):
     elements = atom_info['elements']
     distmat = distance_matrix(coords)
     
-    # Use gcutil's write_zmat function to generate the Z-matrix
-    write_zmat(coords, distmat, elements, rvar=rvar, avar=avar, dvar=dvar)
+    # Generate the Z-matrix
+    if zmat_gen_method == 2: #gcutil's write_zmat function   
+        write_zmat(coords, distmat, elements, rvar=rvar, avar=avar, dvar=dvar)
+    elif zmat_gen_method == 1: # our own zmat generation
+        write_zmat_by_connectivity(coords, distmat, elements, rvar=rvar, avar=avar, dvar=dvar)
+    else:
+        raise ValueError('Invalid zmat generation method')
     
     # Restore stdout and close file
     sys.stdout = original_stdout
@@ -407,3 +413,131 @@ def generate_xyz_from_zmat_with_seeds(zmat_file, seed_coords):
     os.remove(temp_file.name)
     
     return atom_names, xyz_coords
+
+def write_zmat_by_connectivity(xyzarr, distmat, atomnames, rvar=False, avar=False, dvar=False):
+    """Prints a z-matrix from xyz coordinates using actual molecular connectivity.
+    For each atom after the third one:
+    1. Bond partner (j): closest atom among previous atoms
+    2. Angle partner (k): bond partner of j
+    3. Dihedral partner (l): bond partner of k
+    
+    Rules:
+    - Follow bond partner chain unless atom 1 is encountered
+    - If atom 1 appears as any reference, other references must be from atoms 2 and 3
+    - All three reference atoms must be different
+    """
+    npart, ncoord = xyzarr.shape
+    rlist = []  # list of bond lengths
+    alist = []  # list of bond angles (degrees)
+    dlist = []  # list of dihedral angles (degrees)
+    
+    # Store connectivity information for each atom
+    bond_partners = {}  # key: atom index, value: its bond partner's index
+    
+    if npart > 0:
+        # First atom
+        print(atomnames[0])
+        
+        if npart > 1:
+            # Second atom - always connected to first
+            n = atomnames[1]
+            rlist.append(distmat[0][1])
+            bond_partners[1] = 0
+            if (rvar):
+                r = 'R1'
+            else:
+                r = '{:>11.5f}'.format(rlist[0])
+            print('{:<3s} {:>4d}  {:11s}'.format(n, 1, r))
+            
+            if npart > 2:
+                # Third atom - connected to first atom by default
+                n = atomnames[2]
+                bond_partners[2] = 0
+                
+                rlist.append(distmat[0][2])
+                if (rvar):
+                    r = 'R2'
+                else:
+                    r = '{:>11.5f}'.format(rlist[1])
+                
+                alist.append(angle(xyzarr, 2, 0, 1))
+                if (avar):
+                    t = 'A1'
+                else:
+                    t = '{:>11.5f}'.format(alist[0])
+                
+                print('{:<3s} {:>4d}  {:11s} {:>4d}  {:11s}'.format(n, 1, r, 2, t))
+                
+                if npart > 3:
+                    for i in range(3, npart):
+                        n = atomnames[i]
+                        
+                        # Find closest previous atom (bond partner j)
+                        prev_dists = distmat[0:i, i]
+                        j = np.argmin(prev_dists)
+                        bond_partners[i] = j
+                        
+                        # Get k by following bond partner chain
+                        k = bond_partners.get(j, 0)
+                        
+                        # Get l by following bond partner chain
+                        l = bond_partners.get(k, 0)
+                        
+                        # Now adjust references if atom 1 is involved
+                        if j == 0:
+                            # If directly bonded to atom 1
+                            k = 1
+                            l = 2
+                        elif k == 0:
+                            # If second reference is atom 1
+                            if j == 1:
+                                l = 2
+                            elif j == 2:
+                                l = 1
+                            else:
+                                l = 2
+                        
+                        # Ensure all references are different
+                        if len(set([j, k, l])) < 3:
+                            # If we have duplicates, adjust l
+                            for possible_l in [1, 2, 3]:
+                                if possible_l not in [j, k]:
+                                    l = possible_l
+                                    break
+                        
+                        # Calculate values and print
+                        rlist.append(distmat[j][i])
+                        if (rvar):
+                            r = 'R{:<4d}'.format(i)
+                        else:
+                            r = '{:>11.5f}'.format(rlist[i-1])
+                        
+                        alist.append(angle(xyzarr, i, j, k))
+                        if (avar):
+                            t = 'A{:<4d}'.format(i-1)
+                        else:
+                            t = '{:>11.5f}'.format(alist[i-2])
+                        
+                        dlist.append(dihedral(xyzarr, i, j, k, l))
+                        if (dvar):
+                            d = 'D{:<4d}'.format(i-2)
+                        else:
+                            d = '{:>11.5f}'.format(dlist[i-3])
+                        
+                        # Print atom line with 1-based indices
+                        print('{:3s} {:>4d}  {:11s} {:>4d}  {:11s} {:>4d}  {:11s}'.format(
+                            n, j+1, r, k+1, t, l+1, d))
+    
+    # Print variable definitions if requested
+    if (rvar):
+        print(" ")
+        for i in range(npart-1):
+            print('R{:<4d} = {:>11.5f}'.format(i+1, rlist[i]))
+    if (avar):
+        print(" ")
+        for i in range(npart-2):
+            print('A{:<4d} = {:>11.5f}'.format(i+1, alist[i]))
+    if (dvar):
+        print(" ")
+        for i in range(npart-3):
+            print('D{:<4d} = {:>11.5f}'.format(i+1, dlist[i]))

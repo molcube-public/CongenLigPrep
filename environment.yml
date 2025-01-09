@@ -1,0 +1,11 @@
+name: congenligprep-1
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - conda-forge::rdkit=2024.09.3
+  - openbabel=3.1.1
+  - scipy
+  - python=3.9 
+
+

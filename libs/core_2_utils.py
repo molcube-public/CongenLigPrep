@@ -312,17 +312,29 @@ def assemble_molecule(main_mol, r_groups):
     return all_combinations
 
 
-def rdkit_optimize_molecule(input_sdf, output_sdf):
+def rdkit_optimize_molecule(input_sdf, output_sdf, optimize_h_only=False):
     """
     Optimize molecule using RDKit with MMFF force field and fix charge indicators
     Args:
         input_sdf: input SDF file
-        output_sdf: output SDF file     
+        output_sdf: output SDF file    
+        optimize_h_only: if True, only optimize H atoms 
     """
     # First let RDKit optimize and write the molecule
     mm = rdkit.Chem.SDMolSupplier(input_sdf, removeHs=False, sanitize=True)
     mol = mm[0]
-    MMFFOptimizeMolecule(mol)
+
+    if optimize_h_only:
+        mp = Chem.AllChem.MMFFGetMoleculeProperties(mol)
+        ff = Chem.AllChem.MMFFGetMoleculeForceField(mol, mp)
+        for atom in mol.GetAtoms():
+            if atom.GetAtomicNum() != 1:  # If not hydrogen
+                ff.AddFixedPoint(atom.GetIdx())
+        ff.Minimize(maxIts=200)
+    else:
+        MMFFOptimizeMolecule(mol)
+
+
     w = Chem.SDWriter(output_sdf)
     w.write(mol)
     w.close()
