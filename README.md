@@ -1,5 +1,6 @@
 # CongenLigPrep
-![movie](https://github.com/user-attachments/assets/8b16f6e4-a8f4-419b-a532-97bb4abdbc5a)
+![movie](https://github.com/user-attachments/assets/a0c9bb3c-ab4c-4021-a8cf-1ef89a7f93e9)
+
 
 
 
@@ -8,7 +9,8 @@ CongenLigPrep is an open-source utility to prepare high-quality congeneric serie
 
 ## Feature and Components
 
-![figures-1](https://github.com/user-attachments/assets/dfefa006-77d2-4569-a7bf-393591327ec3)
+![figures-1](https://github.com/user-attachments/assets/967e4a43-e49a-49de-bce6-62bba7a4df78)
+
 
 
 CongenLigPrep consists of three Python scripts which accept different input file formats:
